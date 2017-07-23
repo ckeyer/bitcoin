@@ -192,6 +192,17 @@ class BitcoinTestFramework(object):
             self._initialize_chain_clean()
         else:
             self._initialize_chain()
+        datadir = os.path.join(dirname, "node" + str(i))
+        if binary is None:
+            binary = os.getenv("BITCOIND", "bgoldd")
+        args = [binary, "-datadir=" + datadir, "-server", "-keypool=1", "-discover=0", "-rest", "-logtimemicros", "-debug", "-debugexclude=libevent", "-debugexclude=leveldb", "-mocktime=" + str(self.mocktime), "-uacomment=testnode%d" % i]
+        if extra_args is not None:
+            args.extend(extra_args)
+        self.bitcoind_processes[i] = subprocess.Popen(args, stderr=stderr)
+        self.log.debug("initialize_chain: bitcoind started, waiting for RPC to come up")
+        self._wait_for_bitcoind_start(self.bitcoind_processes[i], datadir, i, rpchost)
+        self.log.debug("initialize_chain: RPC successfully started")
+        proxy = get_rpc_proxy(rpc_url(datadir, i, rpchost), i, timeout=timewait)
 
     def setup_network(self):
         """Override this method to customize test network topology"""
@@ -391,8 +402,8 @@ class BitcoinTestFramework(object):
 
             # Create cache directories, run bitcoinds:
             for i in range(MAX_NODES):
-                datadir = initialize_datadir(self.options.cachedir, i)
-                args = [os.getenv("BITCOIND", "bitcoind"), "-server", "-keypool=1", "-datadir=" + datadir, "-discover=0"]
+                datadir = initialize_datadir(cachedir, i)
+                args = [os.getenv("BITCOIND", "bgoldd"), "-server", "-keypool=1", "-datadir=" + datadir, "-discover=0"]
                 if i > 0:
                     args.append("-connect=127.0.0.1:" + str(p2p_port(0)))
                 self.nodes.append(TestNode(i, self.options.cachedir, extra_args=[], rpchost=None, timewait=None, binary=None, stderr=None, mocktime=self.mocktime, coverage_dir=None))
@@ -459,10 +470,10 @@ class ComparisonTestFramework(BitcoinTestFramework):
 
     def add_options(self, parser):
         parser.add_option("--testbinary", dest="testbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
+                          default=os.getenv("BITCOIND", "bgoldd"),
                           help="bitcoind binary to test")
         parser.add_option("--refbinary", dest="refbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
+                          default=os.getenv("BITCOIND", "bgoldd"),
                           help="bitcoind binary to use for reference nodes (if any)")
 
     def setup_network(self):
