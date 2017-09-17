@@ -59,7 +59,8 @@ public:
 
     const Consensus::Params& GetConsensus() const { return consensus; }
     const CMessageHeader::MessageStartChars& MessageStart() const { return pchMessageStart; }
-    int GetDefaultPort() const { return nDefaultPort; }
+    const CMessageHeader::MessageStartChars& MessageStartLegacy() const { return pchMessageStartLegacy; }
+    int GetDefaultPort(bool bootstrapping = false) const { return bootstrapping ? nBitcoinDefaultPort : nDefaultPort; }
 
     const CBlock& GenesisBlock() const { return genesis; }
     /** Default value for -checkmempool and -checkblockindex argument */
@@ -79,12 +80,16 @@ public:
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
     void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout);
+    /** Return premine address and script for a given block height */
+    bool IsPremineAddressScript(const CScript&) const;
 protected:
     CChainParams() {}
 
     Consensus::Params consensus;
+    CMessageHeader::MessageStartChars pchMessageStartLegacy;
     CMessageHeader::MessageStartChars pchMessageStart;
     int nDefaultPort;
+    int nBitcoinDefaultPort;
     uint64_t nPruneAfterHeight;
     unsigned int nEquihashN = 0;
     unsigned int nEquihashK = 0;
@@ -98,6 +103,7 @@ protected:
     bool fMineBlocksOnDemand;
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
+    std::vector<std::string> vPremineAddressWhitelist;
 };
 
 /**
@@ -112,6 +118,12 @@ std::unique_ptr<CChainParams> CreateChainParams(const std::string& chain);
  * startup, except for unit tests.
  */
 const CChainParams &Params();
+
+/**
+ * Return the chain parameters with Bitcoin address format. This is used for
+ * address conversion.
+ */
+const CChainParams &BitcoinAddressFormatParams();
 
 /**
  * Sets the params returned by Params() to those for the given BIP70 chain name.
