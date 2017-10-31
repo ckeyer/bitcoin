@@ -415,6 +415,9 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
         uint64_t nonce = GetDeterministicRandomizer(RANDOMIZER_ID_LOCALHOSTNONCE).Write(id).Finalize();
         CAddress addr_bind = GetBindAddress(hSocket);
         CNode* pnode = new CNode(id, nLocalServices, GetBestHeight(), hSocket, addrConnect, CalculateKeyedNetGroup(addrConnect), nonce, addr_bind, pszDest ? pszDest : "", false);
+        if (fBTGBootstrapping) {
+            pnode->fUsesGoldMagic = false;
+        }
         pnode->nServicesExpected = ServiceFlags(addrConnect.nServices & nRelevantServices);
         pnode->AddRef();
 
@@ -1846,7 +1849,8 @@ void CConnman::ThreadOpenConnections()
             }
 
             // do not allow non-default ports, unless after 50 invalid addresses selected already
-            if (addr.GetPort() != Params().GetDefaultPort() && nTries < 50)
+            if ((addr.GetPort() != Params().GetDefaultPort() ||
+                 (fBTGBootstrapping && addr.GetPort() != Params().GetDefaultPort(true))) && nTries < 50)
                 continue;
 
             addrConnect = addr;

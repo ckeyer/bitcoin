@@ -2632,15 +2632,18 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         CValidationState state;
         // When bootstrapping BTG network, continue even if there are invalid blocks.
-        if (!ProcessNewBlockHeaders(headers, state, chainparams, &pindexLast) &&
-                (pindexLast == nullptr || !fBTGBootstrapping)) {
-            int nDoS;
-            if (state.IsInvalid(nDoS)) {
-                if (nDoS > 0) {
-                    LOCK(cs_main);
-                    Misbehaving(pfrom->GetId(), nDoS);
+        if (!ProcessNewBlockHeaders(headers, state, chainparams, &pindexLast)) {
+            if (fBTGBootstrapping && pindexLast != nullptr) {
+                LogPrint(BCLog::NET, "though found invalid headers, continue with valid headers for bootstrapping.\n");
+            } else {
+                int nDoS;
+                if (state.IsInvalid(nDoS)) {
+                    if (nDoS > 0) {
+                        LOCK(cs_main);
+                        Misbehaving(pfrom->GetId(), nDoS);
+                    }
+                    return error("invalid header received");
                 }
-                return error("invalid header received");
             }
         }
 
@@ -3043,10 +3046,14 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
     
     // This is a new peer. Before doing anything, we need to detect what magic
     // the peer is using.
-    if (pfrom->nVersion == 0 &&
-        memcmp(msg.hdr.pchMessageStart, chainparams.MessageStart(),
-               CMessageHeader::MESSAGE_START_SIZE) == 0) {
-        pfrom->fUsesGoldMagic = true;
+    if (pfrom->nVersion == 0) {
+        if (memcmp(msg.hdr.pchMessageStart, chainparams.MessageStart(),
+                   CMessageHeader::MESSAGE_START_SIZE) == 0) {
+            pfrom->fUsesGoldMagic = true;
+        } else if (fBTGBootstrapping) {
+            // Allow to connect to Bitcoin clients when bootstrapping.
+            pfrom->fUsesGoldMagic = false;
+        }
     }
     
     // Scan for message start

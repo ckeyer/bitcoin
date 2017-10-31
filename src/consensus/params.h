@@ -50,6 +50,7 @@ struct Params {
     int BTGHeight;
     /** Premining blocks for Bitcoin GPU hard fork **/
     int BTGPremineWindow;
+    bool BTGPremineEnforceWhitelist;
     /** The first post-fork block of Bitcoin blockchain. **/
     uint256 BitcoinPostforkBlock;
     uint32_t BitcoinPostforkTime;
@@ -64,6 +65,8 @@ struct Params {
     /** Proof of work parameters */
     uint256 powLimit;
     uint256 powLimitLegacy;
+    uint256 powLimitStart;
+    
     const uint256& PowLimit(bool postfork) const { return postfork ? powLimit : powLimitLegacy; }
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;

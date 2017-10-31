@@ -94,7 +94,7 @@ static void CheckBlockIndex(const Consensus::Params& consensusParams);
 /** Constant stuff for coinbase transactions we create: */
 CScript COINBASE_FLAGS;
 
-const std::string strMessageMagic = "Bitcoin Signed Message:\n";
+const std::string strMessageMagic = "Bitcoin Gold Signed Message:\n";
 
 // Internal stuff
 namespace {
@@ -373,21 +373,21 @@ static bool IsCurrentForFeeEstimation()
     return true;
 }
 
-bool static IsBTGHardForkEnabled(const CChainParams& chainParams, int nHeight) {
-    return nHeight >= chainParams.GetConsensus().BTGHeight;
+bool static IsBTGHardForkEnabled(int nHeight, const Consensus::Params& params) {
+    return nHeight >= params.BTGHeight;
 }
 
-bool IsBTGHardForkEnabled(const CChainParams& chainParams, const CBlockIndex *pindexPrev) {
+bool IsBTGHardForkEnabled(const CBlockIndex* pindexPrev, const Consensus::Params& params) {
     if (pindexPrev == nullptr) {
         return false;
     }
 
-    return IsBTGHardForkEnabled(chainParams, pindexPrev->nHeight);
+    return IsBTGHardForkEnabled(pindexPrev->nHeight, params);
 }
 
-bool IsBTGHardForkEnabledForCurrentBlock(const CChainParams& chainParams) {
+bool IsBTGHardForkEnabledForCurrentBlock(const Consensus::Params& params) {
     AssertLockHeld(cs_main);
-    return IsBTGHardForkEnabled(chainParams, chainActive.Tip());
+    return IsBTGHardForkEnabled(chainActive.Tip(), params);
 }
 
 /* Make mempool consistent after a reorg, by re-adding or recursively erasing
@@ -1091,8 +1091,10 @@ bool IsInitialBlockDownload()
         return true;
     if (chainActive.Tip()->nChainWork < nMinimumChainWork)
         return true;
+    if (fSkipHardforkIBD && chainActive.Tip()->nHeight + 1 >= (int)chainParams.GetConsensus().BTGHeight)
+        return false;
     int64_t target_time = fBTGBootstrapping ? (int64_t)chainParams.GetConsensus().BitcoinPostforkTime : GetTime();
-    if (chainActive.Tip()->GetBlockTime() < (GetTime() - nMaxTipAge))
+    if (chainActive.Tip()->GetBlockTime() < (target_time - nMaxTipAge))
         return true;
     LogPrintf("Leaving InitialBlockDownload (latching to false)\n");
     latchToFalse.store(true, std::memory_order_relaxed);
@@ -1655,7 +1657,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
 
-    if (IsBTGHardForkEnabled(Params(), pindex->pprev)) {
+    if (IsBTGHardForkEnabled(pindex->pprev, consensusparams)) {
         flags |= SCRIPT_VERIFY_STRICTENC;
     } else {
         flags |= SCRIPT_ALLOW_NON_FORKID;
@@ -3054,20 +3056,22 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
     }
 
     if (nHeight >= consensusParams.BTGHeight &&
-            nHeight < consensusParams.BTGHeight + consensusParams.BTGPremineWindow) {
-        if (block.vtx.size() != 1) {
+        nHeight < consensusParams.BTGHeight + consensusParams.BTGPremineWindow)
+    {
+        if (block.vtx[0]->vout.size() != 1) {
             return state.DoS(
-                100, error("%s: no transaction allowed in premine window",__func__),
-                REJECT_INVALID, "premine-no-tx-allowed");
+                100, error("%s: only one coinbase output is allowed",__func__),
+                REJECT_INVALID, "bad-premine-coinbase-output");
         }
         const CTxOut& output = block.vtx[0]->vout[0];
-        bool valid = Params().IsPremineAddressScript(output.scriptPubKey);
+        bool valid = Params().IsPremineAddressScript(output.scriptPubKey, (uint32_t)nHeight);
         if (!valid) {
             return state.DoS(
                 100, error("%s: not in premine whitelist", __func__),
-                REJECT_INVALID, "cb-not-premine-whitelist");
+                REJECT_INVALID, "bad-premine-coinbase-scriptpubkey");
         }
     }
+
 
     // Validation for witness commitments.
     // * We compute the witness hash (which is the hash including witnesses) of all the block's transactions, except the
